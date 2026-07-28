@@ -1,0 +1,18 @@
+MedAgent
+Copyright 2026 MedAgent contributors
+
+This project interoperates with the corpus directory layout published by the
+MedRAG project:
+
+  Guangzhi Xiong, Qiao Jin, Zhiyong Lu, and Aidong Zhang.
+  "Benchmarking Retrieval-Augmented Generation for Medicine."
+  Findings of ACL 2024.
+  https://github.com/gzxiong/MedRAG
+
+MedRAG code is distributed with a United States Government Work public-domain
+notice. MedAgent does not redistribute the MedRAG Textbooks corpus, embeddings,
+or indexes. Corpus licenses and permissions remain the responsibility of the
+person who installs or distributes those materials.
+
+Third-party Python and JavaScript dependencies retain their respective
+licenses and notices.
