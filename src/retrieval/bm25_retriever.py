@@ -28,10 +28,22 @@ class BM25Retriever:
 
     def _load_corpus(self):
         """加载语料库"""
-        # 从 MedRAG 的语料库加载
-        corpus_dir = os.path.join(
-            config.MEDRAG_DB_DIR, config.CORPUS_NAME, "chunk"
+        if not config.TEXTBOOKS_ENABLED:
+            logger.warning("Local textbook retrieval is disabled")
+            return
+
+        corpus_dir = os.path.join(config.TEXTBOOKS_CORPUS_DIR, "chunk")
+        legacy_corpus_dir = os.path.join(
+            config.LEGACY_TEXTBOOKS_CORPUS_DIR,
+            "chunk",
         )
+        if not os.path.exists(corpus_dir) and os.path.exists(legacy_corpus_dir):
+            logger.warning(
+                "Using legacy textbook corpus path: %s; migrate to %s",
+                legacy_corpus_dir,
+                corpus_dir,
+            )
+            corpus_dir = legacy_corpus_dir
 
         if not os.path.exists(corpus_dir):
             logger.warning("BM25 corpus directory is missing: %s", corpus_dir)

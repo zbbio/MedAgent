@@ -2,7 +2,9 @@
 
 MedAgent 是一个带证据引用、请求隔离和生成排队的医学 RAG 演示系统。项目以
 BYOK（Bring Your Own Key）方式发布：每个部署者使用自己的模型账号和 API Key，
-源码仓库与容器镜像不包含模型凭证或私有医学语料。
+源码仓库与容器镜像不包含模型凭证或教材正文。部署者可以明确接受第三方数据风险后，
+从 MedRAG 官方 Hugging Face 数据集下载固定版本的 18 个教材来源和 125,847 个
+chunk。
 
 > MedAgent 用于研究和演示，不构成诊断或治疗建议，也不是医疗器械。
 
@@ -14,7 +16,8 @@ BYOK（Bring Your Own Key）方式发布：每个部署者使用自己的模型�
 - 最多 3 个生成任务并行、6 个请求排队；
 - 共享访问密码和 12 小时签名 HttpOnly Cookie；
 - 输入限制、受控 CORS、结构化错误、请求号和耗时指标；
-- 本地知识库缺失时明确进入 `pubmed_only` 模式。
+- 固定版本下载、SHA-256 和 125,847 条语料完整性校验；
+- 禁用教材下载或本地知识库缺失时明确进入 `pubmed_only` 模式。
 
 ## 模型供应商
 
@@ -32,7 +35,10 @@ BYOK（Bring Your Own Key）方式发布：每个部署者使用自己的模型�
 
 ```bash
 cp .env.example .env
-# 编辑 .env，填写自己的模型凭证、访问密码和随机会话密钥
+# 编辑 .env，填写自己的模型凭证、访问密码和随机会话密钥。
+# 阅读 docs/corpus-licensing.md 后，选择：
+# MEDRAG_TEXTBOOKS_ACCEPT_TERMS=true  下载固定教材语料
+# TEXTBOOKS_ENABLED=false             仅使用 PubMed
 docker compose up --build -d
 ```
 
@@ -51,7 +57,8 @@ docker compose up --build -d
 docker compose down
 ```
 
-默认命名卷只保存运行时 Chroma 数据，不包含仓库中的私有教材。完整部署说明见
+`corpus-init` 首次运行时将固定版本的第三方教材数据下载到 `medagent-data` 命名卷，
+校验完成后才启动应用；后续重启复用该卷。完整部署说明见
 [docs/deployment.md](docs/deployment.md)。
 
 ## 本地开发
@@ -65,6 +72,9 @@ Copy-Item .env.example .env
 
 npm --prefix frontend ci
 npm --prefix frontend run build
+
+# 启用教材时先编辑 .env 确认第三方数据风险，再初始化语料
+.\.venv-win\Scripts\python.exe -m src.knowledge.bootstrap
 
 .\.venv-win\Scripts\python.exe -m uvicorn src.api.main:app `
   --host 127.0.0.1 --port 8000
@@ -103,12 +113,17 @@ CORS_ORIGINS=https://your-medagent.example.com
 
 ## 数据边界
 
-公开仓库和镜像不包含教材、切片、嵌入或索引。没有本地数据时，系统仍可通过模型和
-PubMed 工作，但统计接口会显示 `knowledge_mode=pubmed_only`。
+公开仓库和镜像不包含教材、切片、嵌入或索引。启用下载时，初始化容器从
+[`MedRAG/textbooks`](https://huggingface.co/datasets/MedRAG/textbooks) 获取固定
+revision `9c72838920a1323ffa867467d3f7aa7b36b0f994`，并验证18个文件、逐文件
+SHA-256、JSONL 字段、唯一 ID 和 125,847 条总数。查询检索随后完全在部署者的数据
+卷中执行，不调用 MedRAG 在线服务。
 
-本地开发曾使用 125,847 个教材切片、18 个可识别教材来源；这不是 125,847 本教材，
-且当前没有足以支持公开分发的授权材料。未经授权不得上传 `data/`、发布包含它的镜像
-或公开提供教材检索服务。参见：
+该数据集公开可下载，但上游数据卡没有声明明确许可证；公开可访问不等于已获得商业
+使用、重新分发或公开展示教材片段的完整授权。启用
+`MEDRAG_TEXTBOOKS_ACCEPT_TERMS=true` 仅表示部署者已阅读并接受第三方数据风险，
+不构成许可证授予。没有本地数据时系统仍可使用模型和 PubMed，统计接口显示
+`knowledge_mode=pubmed_only`。参见：
 
 - [data/README.md](data/README.md)
 - [docs/corpus-licensing.md](docs/corpus-licensing.md)

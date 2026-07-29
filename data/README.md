@@ -1,15 +1,19 @@
 # Knowledge data
 
-The public repository and Docker image intentionally contain no medical
-textbooks, chunks, embeddings, or Chroma databases.
+The public repository and Docker image intentionally contain no textbook
+content, embeddings, or Chroma databases.
 
-Without local data, MedAgent starts in `pubmed_only` mode and uses the selected
-LLM plus PubMed retrieval. Local BM25 retrieval becomes available only when an
-authorized JSONL corpus is mounted at:
+When explicitly enabled, the `corpus-init` Compose service downloads the pinned
+`MedRAG/textbooks` snapshot, verifies all 18 files and 125,847 rows, and stores
+it in the `medagent-data` volume at:
 
 ```text
-/app/data/index/medrag/MedCorp/chunk/*.jsonl
+/app/data/index/medrag/textbooks/chunk/*.jsonl
 ```
+
+Set `TEXTBOOKS_ENABLED=false` to skip the third-party corpus and run in
+`pubmed_only` mode. Setting only `TEXTBOOKS_AUTO_DOWNLOAD=false` prevents
+network downloads while preserving support for an existing or mounted corpus.
 
 Each JSONL line must contain at least:
 
@@ -17,7 +21,8 @@ Each JSONL line must contain at least:
 {"id":"source_1","title":"Source title","content":"Authorized text"}
 ```
 
-Before distributing a corpus or an image containing it, verify the source
-license permits copying, indexing, retrieval, excerpt display, and
-redistribution. The private textbook corpus used during local development is
-not part of this project.
+The upstream dataset card does not declare a license. Setting
+`MEDRAG_TEXTBOOKS_ACCEPT_TERMS=true` records the deployer's acknowledgement of
+that fact; it does not grant rights. Do not redistribute the downloaded corpus
+or an image containing it without verifying that the applicable permissions
+allow copying, indexing, retrieval, excerpt display, and redistribution.

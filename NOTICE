@@ -10,9 +10,12 @@ MedRAG project:
   https://github.com/gzxiong/MedRAG
 
 MedRAG code is distributed with a United States Government Work public-domain
-notice. MedAgent does not redistribute the MedRAG Textbooks corpus, embeddings,
-or indexes. Corpus licenses and permissions remain the responsibility of the
-person who installs or distributes those materials.
+notice. MedAgent can download a pinned MedRAG Textbooks snapshot from the
+upstream Hugging Face dataset at install time, but does not include that corpus,
+its embeddings, or its indexes in this source repository or container image.
+The upstream dataset card does not declare a license. Corpus permissions remain
+the responsibility of the person who downloads, installs, or distributes those
+materials.
 
 Third-party Python and JavaScript dependencies retain their respective
 licenses and notices.

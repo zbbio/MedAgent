@@ -1,9 +1,29 @@
 services:
+  corpus-init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: medagent:local
+    command: ["python", "-m", "src.knowledge.bootstrap", "--optional"]
+    env_file:
+      - .env
+    volumes:
+      - medagent-data:/app/data
+    restart: "no"
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
   medagent:
     build:
       context: .
       dockerfile: Dockerfile
     image: medagent:local
+    depends_on:
+      corpus-init:
+        condition: service_completed_successfully
     ports:
       - "${MEDAGENT_PORT:-8000}:8000"
     env_file:

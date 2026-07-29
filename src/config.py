@@ -39,7 +39,18 @@ class Config:
     CHROMA_PERSIST_DIR = str(BASE_DIR / "data" / "index" / "chroma")
     CHROMA_COLLECTION = "medical_knowledge"
     MEDRAG_DB_DIR = str(BASE_DIR / "data" / "index" / "medrag")
-    CORPUS_NAME = "MedCorp"
+    CORPUS_NAME = "textbooks"
+    TEXTBOOKS_CORPUS_DIR = os.getenv(
+        "TEXTBOOKS_CORPUS_DIR",
+        str(Path(MEDRAG_DB_DIR) / CORPUS_NAME),
+    )
+    LEGACY_TEXTBOOKS_CORPUS_DIR = str(Path(MEDRAG_DB_DIR) / "MedCorp")
+    TEXTBOOKS_ENABLED = _as_bool("TEXTBOOKS_ENABLED", True)
+    TEXTBOOKS_AUTO_DOWNLOAD = _as_bool("TEXTBOOKS_AUTO_DOWNLOAD", False)
+    MEDRAG_TEXTBOOKS_ACCEPT_TERMS = _as_bool(
+        "MEDRAG_TEXTBOOKS_ACCEPT_TERMS",
+        False,
+    )
     RETRIEVER_NAME = "MedCPT"
 
     # Retrieval

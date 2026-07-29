@@ -29,6 +29,11 @@ LLM_TOKEN_PARAMETER=max_tokens
 
 MEDAGENT_ACCESS_PASSWORD=your-shared-demo-password
 MEDAGENT_SESSION_SECRET=at-least-32-random-bytes
+
+# 二选一：下载固定教材语料，或只使用 PubMed
+TEXTBOOKS_ENABLED=true
+TEXTBOOKS_AUTO_DOWNLOAD=true
+MEDRAG_TEXTBOOKS_ACCEPT_TERMS=true
 ```
 
 可以使用下面的命令生成会话密钥：
@@ -48,6 +53,26 @@ docker compose up -d
 docker compose ps
 ```
 
+首次启动会下载约 212 MB 的第三方教材 chunk。查看初始化进度：
+
+```bash
+docker compose logs -f corpus-init
+```
+
+初始化器锁定 Hugging Face revision，验证18个文件的大小、SHA-256、JSONL 字段、
+唯一 ID 以及 125,847 条总数。只有初始化成功后才启动 `medagent`。数据保存在
+`medagent-data` 命名卷，后续重启不会重复下载。
+
+若不接受第三方教材的数据风险，请设置：
+
+```dotenv
+TEXTBOOKS_ENABLED=false
+TEXTBOOKS_AUTO_DOWNLOAD=false
+MEDRAG_TEXTBOOKS_ACCEPT_TERMS=false
+```
+
+初始化器会跳过下载，应用以 `pubmed_only` 模式启动。
+
 健康检查：
 
 ```bash
@@ -60,7 +85,7 @@ curl http://127.0.0.1:8000/api/health
 docker compose logs --tail=100 medagent
 ```
 
-默认数据保存于 Docker 命名卷 `medagent-data`。公开镜像不包含本地教材。
+公开镜像不包含教材；教材仅在部署机器启动时下载到命名卷。
 
 ## 3. 模型配置
 
@@ -143,14 +168,29 @@ git grep -n -E "(sk-|tp-|api[_-]?key|session[_-]?secret)"
 
 任何真实密钥一旦进入提交历史，都应立即吊销并轮换，不能只删除当前文件。
 
-## 6. 私有或授权语料
+## 6. 教材语料与自有语料
 
-无语料时系统运行于 `pubmed_only` 模式。只有确认拥有索引、展示和分发权限后，才能
-将 JSONL 挂载到：
+默认下载源是 MedRAG 项目发布的公开 Hugging Face 数据集：
 
 ```text
-/app/data/index/medrag/MedCorp/chunk/
+https://huggingface.co/datasets/MedRAG/textbooks
 ```
 
-不要把语料构建进公共镜像。私有部署应通过只读卷挂载授权数据，并对卷和备份单独做
-访问控制。
+固定 revision：
+
+```text
+9c72838920a1323ffa867467d3f7aa7b36b0f994
+```
+
+容器内保存路径：
+
+```text
+/app/data/index/medrag/textbooks/chunk/
+```
+
+公开可下载不等于上游提供了明确商业许可证。启用开关只记录部署者的风险确认，不替代
+出版社或权利人的许可。不要把下载后的语料重新构建进公共镜像。
+
+自有授权 JSONL 也可以放入上述 `chunk/` 目录，每行至少包含 `id`、`title` 和
+`content`。若使用官方完整性校验器，目录必须与固定的18文件 manifest 完全一致；
+自有语料应使用独立目录和自己的 manifest。
