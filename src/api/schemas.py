@@ -28,7 +28,7 @@ class AnswerResponse(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    password: str
+    password: str = Field(min_length=1, max_length=256)
 
 
 class AuthStatusResponse(BaseModel):

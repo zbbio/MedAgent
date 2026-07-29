@@ -1,22 +1,25 @@
-"""Concurrent hybrid retrieval with BM25, PubMed and Chroma."""
+"""Concurrent hybrid retrieval with BM25 and PubMed."""
 
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from typing import Any
 
 from ..config import config
 from .bm25_retriever import BM25Retriever
-from .pubmed_retriever import PubMedRetriever
-from .vector_store import ChromaVectorStore
+from .pubmed_retriever import PubMedRetrievalError, PubMedRetriever
+
+
+logger = logging.getLogger(__name__)
 
 
 class HybridRetriever:
     def __init__(self) -> None:
-        self.vector_store = ChromaVectorStore()
         self.bm25_retriever = BM25Retriever()
         self.pubmed_retriever = PubMedRetriever()
+        self._pubmed_status = "ready"
         self.rrf_k = config.RRF_K
 
     async def close(self) -> None:
@@ -24,35 +27,36 @@ class HybridRetriever:
 
     async def retrieve(self, query: str, k: int | None = None) -> list[dict[str, Any]]:
         result_count = k or config.RETRIEVAL_TOP_K
-        vector_count = await asyncio.to_thread(self.vector_store.count)
-
         bm25_task = asyncio.to_thread(
             self.bm25_retriever.search,
             query,
             result_count * 2,
         )
-        pubmed_task = self.pubmed_retriever.search(
-            query,
-            max_results=config.PUBMED_MAX_RESULTS,
-        )
-        vector_task = (
-            asyncio.to_thread(self.vector_store.search, query, result_count)
-            if vector_count
-            else _empty_results()
-        )
-
-        bm25_results, pubmed_results, vector_results = await asyncio.gather(
+        pubmed_task = self._retrieve_pubmed(query)
+        bm25_results, pubmed_results = await asyncio.gather(
             bm25_task,
             pubmed_task,
-            vector_task,
         )
-        fused = self._rrf_fusion([bm25_results, pubmed_results, vector_results])
+        fused = self._rrf_fusion([bm25_results, pubmed_results])
         return self._postprocess_results(fused, query, result_count)
+
+    async def _retrieve_pubmed(self, query: str) -> list[dict[str, Any]]:
+        try:
+            results = await self.pubmed_retriever.search(
+                query,
+                max_results=config.PUBMED_MAX_RESULTS,
+            )
+        except PubMedRetrievalError as exc:
+            self._pubmed_status = "degraded"
+            logger.warning("PubMed degraded: %s", exc)
+            return []
+        self._pubmed_status = "ready"
+        return results
 
     def stats(self) -> dict[str, Any]:
         bm25 = self.bm25_retriever.stats()
-        vector_documents = self.vector_store.count()
-        local_documents = bm25["chunks"] + vector_documents
+        vector_documents = 0
+        local_documents = bm25["chunks"]
         return {
             "total_documents": local_documents,
             "bm25_chunks": bm25["chunks"],
@@ -63,8 +67,8 @@ class HybridRetriever:
             ),
             "retrievers": {
                 "bm25": "ready" if bm25["available"] else "unavailable",
-                "pubmed": "ready",
-                "chroma": "ready" if vector_documents else "empty",
+                "pubmed": getattr(self, "_pubmed_status", "ready"),
+                "chroma": "disabled_security_hold",
             },
         }
 
@@ -113,7 +117,3 @@ class HybridRetriever:
                 documents[document_id] = document
         sorted_ids = sorted(scores, key=scores.get, reverse=True)
         return [documents[document_id] for document_id in sorted_ids]
-
-
-async def _empty_results() -> list[dict[str, Any]]:
-    return []

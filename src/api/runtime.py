@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections import defaultdict
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from time import perf_counter
 from typing import AsyncIterator
@@ -15,6 +15,40 @@ class QueueFullError(RuntimeError):
 
 class QueueWaitTimeoutError(RuntimeError):
     pass
+
+
+class LoginRateLimiter:
+    """Bound failed shared-password attempts per client address."""
+
+    def __init__(self, max_attempts: int, window_seconds: float) -> None:
+        self.max_attempts = max_attempts
+        self.window_seconds = window_seconds
+        self._failures: defaultdict[str, deque[float]] = defaultdict(deque)
+        self._lock = asyncio.Lock()
+
+    async def is_blocked(self, client_id: str) -> bool:
+        async with self._lock:
+            failures = self._active_failures(client_id)
+            return len(failures) >= self.max_attempts
+
+    async def record_failure(self, client_id: str) -> None:
+        async with self._lock:
+            failures = self._active_failures(client_id)
+            failures.append(perf_counter())
+
+    async def reset(self, client_id: str) -> None:
+        async with self._lock:
+            self._failures.pop(client_id, None)
+
+    def _active_failures(self, client_id: str) -> deque[float]:
+        failures = self._failures[client_id]
+        cutoff = perf_counter() - self.window_seconds
+        while failures and failures[0] <= cutoff:
+            failures.popleft()
+        if not failures:
+            self._failures.pop(client_id, None)
+            failures = self._failures[client_id]
+        return failures
 
 
 class GenerationGate:
@@ -72,12 +106,15 @@ class ServiceMetrics:
         self._counters: defaultdict[str, int] = defaultdict(int)
         self._duration_total_ms = 0.0
         self._duration_samples = 0
+        self._timing_totals: defaultdict[str, float] = defaultdict(float)
+        self._timing_samples: defaultdict[str, int] = defaultdict(int)
 
     async def record(
         self,
         outcome: str,
         *,
         duration_ms: float | None = None,
+        timings: dict[str, float] | None = None,
         upstream_rate_limited: bool = False,
     ) -> None:
         async with self._lock:
@@ -88,6 +125,10 @@ class ServiceMetrics:
             if duration_ms is not None:
                 self._duration_total_ms += duration_ms
                 self._duration_samples += 1
+            for name, value in (timings or {}).items():
+                if name.endswith("_ms") and isinstance(value, (int, float)):
+                    self._timing_samples[name] += 1
+                    self._timing_totals[name] += value
 
     async def snapshot(self) -> dict[str, int | float]:
         async with self._lock:
@@ -96,7 +137,7 @@ class ServiceMetrics:
                 if self._duration_samples
                 else 0.0
             )
-            return {
+            result: dict[str, int | float] = {
                 "requests": self._counters["requests"],
                 "success": self._counters["success"],
                 "errors": self._counters["errors"],
@@ -105,3 +146,16 @@ class ServiceMetrics:
                 "upstream_rate_limited": self._counters["upstream_rate_limited"],
                 "average_total_ms": average,
             }
+            for name in (
+                "queue_ms",
+                "understanding_ms",
+                "retrieval_ms",
+                "generation_ms",
+                "citation_ms",
+            ):
+                samples = self._timing_samples[name]
+                total = self._timing_totals[name]
+                result[f"average_{name}"] = (
+                    round(total / samples, 2) if samples else 0.0
+                )
+            return result

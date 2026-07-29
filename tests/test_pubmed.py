@@ -1,6 +1,9 @@
+import asyncio
 from xml.etree import ElementTree as ET
 
-from src.retrieval.pubmed_retriever import PubMedRetriever
+import pytest
+
+from src.retrieval.pubmed_retriever import PubMedRetrievalError, PubMedRetriever
 
 
 def test_pubmed_article_parser_handles_multiple_abstract_sections():
@@ -34,3 +37,20 @@ def test_pubmed_article_parser_handles_multiple_abstract_sections():
     assert "Background text." in article["content"]
     assert "Conclusion text." in article["content"]
     assert article["authors"] == ["Ze Wang"]
+
+
+def test_pubmed_transport_failure_is_not_reported_as_no_results():
+    async def scenario():
+        retriever = PubMedRetriever()
+
+        async def fail_search(query, max_results):
+            raise asyncio.TimeoutError
+
+        retriever._search_pubmed = fail_search
+        try:
+            with pytest.raises(PubMedRetrievalError, match="unavailable"):
+                await retriever.search("diabetes")
+        finally:
+            await retriever.close()
+
+    asyncio.run(scenario())

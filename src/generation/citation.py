@@ -51,7 +51,10 @@ class CitationGenerator:
                     "marker": f"[{match}]",
                     "title": title,
                     "content": key_content,
-                    "source": snippet.get("metadata", {}).get("source", "Textbooks"),
+                    "source": snippet.get(
+                        "source",
+                        snippet.get("metadata", {}).get("source", "Textbooks"),
+                    ),
                 })
 
         # 如果没有找到引用标记，使用 LLM 分析

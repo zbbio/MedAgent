@@ -16,6 +16,10 @@ from ..config import config
 logger = logging.getLogger(__name__)
 
 
+class PubMedRetrievalError(RuntimeError):
+    """PubMed could not be queried; this is different from an empty result."""
+
+
 class PubMedRetriever:
     def __init__(self, api_key: str | None = None) -> None:
         self.api_key = api_key or config.PUBMED_API_KEY
@@ -50,7 +54,9 @@ class PubMedRetriever:
             return self._format_results(articles, query)
         except (httpx.HTTPError, ET.ParseError, asyncio.TimeoutError) as exc:
             logger.warning("PubMed retrieval failed: %s", type(exc).__name__)
-            return []
+            raise PubMedRetrievalError(
+                f"PubMed unavailable: {type(exc).__name__}"
+            ) from exc
 
     async def _search_pubmed(self, query: str, max_results: int) -> list[str]:
         await self._throttle()

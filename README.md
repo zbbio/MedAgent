@@ -12,7 +12,7 @@ chunk。
 
 - FastAPI + React 单体部署；
 - 请求级对话历史，不在服务端保存用户会话；
-- BM25、Chroma 和 PubMed 混合检索及引用展示；
+- BM25 与 PubMed 混合检索及引用展示；
 - 最多 3 个生成任务并行、6 个请求排队；
 - 共享访问密码和 12 小时签名 HttpOnly Cookie；
 - 输入限制、受控 CORS、结构化错误、请求号和耗时指标；
@@ -43,6 +43,9 @@ docker compose up --build -d
 ```
 
 打开 `http://127.0.0.1:8000`。
+
+Compose 默认只把端口绑定到本机回环地址，避免无意暴露给局域网。
+需要由反向代理访问时，显式设置 `MEDAGENT_BIND_HOST`。
 
 Windows PowerShell：
 
@@ -104,11 +107,14 @@ LLM_API_KEY=
 少数推理模型只接受 `max_completion_tokens`，此时把
 `LLM_TOKEN_PARAMETER` 改为该值。
 
-缺少必需配置时服务拒绝启动。生产环境还必须设置：
+访问密码至少需要 12 个字符，会话密钥至少需要 32 字节；示例占位值会被拒绝。
+登录接口默认按客户端地址限制为每 60 秒 5 次失败。缺少必需配置时服务拒绝启动。
+生产环境还必须设置：
 
 ```dotenv
 COOKIE_SECURE=true
 CORS_ORIGINS=https://your-medagent.example.com
+MEDAGENT_BIND_HOST=127.0.0.1
 ```
 
 ## 数据边界
@@ -137,6 +143,10 @@ npm --prefix frontend run build
 ```
 
 GitHub Actions 会在 push 和 pull request 时验证后端、前端及容器构建。
+版本标签只有在同一套 CI 全部通过后才会发布容器镜像。
+
+> Chroma 向量检索目前不进入默认构建。原因是其当前 1.x 版本受
+> CVE-2026-45829 影响且上游尚无修复版本；现有教材检索使用 BM25。
 
 ## 开源与致谢
 

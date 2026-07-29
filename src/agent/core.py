@@ -36,14 +36,20 @@ class MedAgent:
         timings: dict[str, float] = {}
         request_history = list(history or [])
 
-        step = perf_counter()
-        understanding = await self.query_understander.understand(
-            question=question,
-            history=request_history,
-        )
-        timings["understanding_ms"] = _elapsed_ms(step)
-
-        route = "single_retrieval" if use_rag else self.router.route(understanding)
+        if use_rag:
+            step = perf_counter()
+            understanding = await self.query_understander.understand(
+                question=question,
+                history=request_history,
+            )
+            timings["understanding_ms"] = _elapsed_ms(step)
+            route = self.router.route(understanding)
+            if route == "direct_generation":
+                route = "single_retrieval"
+        else:
+            understanding = {"rewritten_query": question}
+            timings["understanding_ms"] = 0.0
+            route = "direct_generation"
         snippets: list[dict[str, Any]] = []
 
         step = perf_counter()

@@ -29,6 +29,8 @@ LLM_TOKEN_PARAMETER=max_tokens
 
 MEDAGENT_ACCESS_PASSWORD=your-shared-demo-password
 MEDAGENT_SESSION_SECRET=at-least-32-random-bytes
+LOGIN_MAX_ATTEMPTS=5
+LOGIN_WINDOW_SECONDS=60
 
 # 二选一：下载固定教材语料，或只使用 PubMed
 TEXTBOOKS_ENABLED=true
@@ -51,6 +53,13 @@ docker compose config
 docker compose build
 docker compose up -d
 docker compose ps
+```
+
+Compose 默认监听 `127.0.0.1`。只有明确需要其他网络接口连接时才覆盖：
+
+```dotenv
+MEDAGENT_BIND_HOST=127.0.0.1
+MEDAGENT_PORT=8000
 ```
 
 首次启动会下载约 212 MB 的第三方教材 chunk。查看初始化进度：
@@ -141,7 +150,10 @@ Linux 容器访问宿主服务时，可能需要在 Compose 中增加
 ```dotenv
 COOKIE_SECURE=true
 CORS_ORIGINS=https://medagent.example.com
+MEDAGENT_BIND_HOST=127.0.0.1
 ```
+
+应用包含基础的登录失败限速；公网环境仍建议在反向代理或网关增加第二层限速。
 
 ## 5. 发布 GitHub 与 GHCR
 

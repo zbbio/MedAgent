@@ -9,7 +9,7 @@ Browser
   -> generation queue
   -> request-scoped history
   -> query understanding and route selection
-  -> BM25 / Chroma / PubMed retrieval
+  -> BM25 / PubMed retrieval
   -> configured LLM provider
   -> citation mapping
   -> structured response with request_id and timings
@@ -43,11 +43,12 @@ SHA-256、JSONL 结构、唯一 ID 和 125,847 条总数，再允许 API 容器�
 
 ## 检索模式
 
-- `local_and_pubmed`：本地 BM25/Chroma 至少有一个包含文档，同时使用 PubMed；
+- `local_and_pubmed`：本地 BM25 包含文档，同时使用 PubMed；
 - `pubmed_only`：教材下载被关闭或没有本地语料。
 
-检索器并发执行后使用 RRF 融合，并按内容去重和关键词相关性过滤。同步 BM25 与
-Chroma 操作在线程池运行，PubMed 使用异步 HTTP。
+检索器并发执行后使用 RRF 融合，并按内容去重和关键词相关性过滤。同步 BM25
+操作在线程池运行，PubMed 使用异步 HTTP。Chroma 适配器因 CVE-2026-45829
+暂停进入默认依赖和运行链路，待上游发布修复版本后恢复。
 
 ## 生成控制
 

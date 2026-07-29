@@ -23,6 +23,7 @@ from ..config import config
 from ..generation.llm_client import LLMServiceError, LLMTimeoutError
 from .runtime import (
     GenerationGate,
+    LoginRateLimiter,
     QueueFullError,
     QueueWaitTimeoutError,
     ServiceMetrics,
@@ -76,6 +77,10 @@ def create_app(
             config.QUEUE_WAIT_SECONDS,
         )
         application.state.metrics = ServiceMetrics()
+        application.state.login_limiter = LoginRateLimiter(
+            config.LOGIN_MAX_ATTEMPTS,
+            config.LOGIN_WINDOW_SECONDS,
+        )
         try:
             yield
         finally:
@@ -125,9 +130,19 @@ def create_app(
             raise AppError(401, "authentication_required", "请先登录")
 
     @application.post("/api/auth/login", response_model=AuthStatusResponse)
-    async def login(payload: LoginRequest, response: Response):
+    async def login(request: Request, payload: LoginRequest, response: Response):
+        client_id = request.client.host if request.client else "unknown"
+        limiter: LoginRateLimiter = request.app.state.login_limiter
+        if await limiter.is_blocked(client_id):
+            raise AppError(
+                429,
+                "login_rate_limited",
+                "登录失败次数过多，请稍后再试",
+            )
         if not verify_password(payload.password):
+            await limiter.record_failure(client_id)
             raise AppError(401, "invalid_password", "访问密码错误")
+        await limiter.reset(client_id)
         response.set_cookie(
             key=COOKIE_NAME,
             value=issue_session_token(),
@@ -184,7 +199,11 @@ def create_app(
             result["timings"]["queue_ms"] = queue_ms
             total_ms = round((perf_counter() - started) * 1000, 2)
             result["timings"]["request_total_ms"] = total_ms
-            await metrics.record("success", duration_ms=total_ms)
+            await metrics.record(
+                "success",
+                duration_ms=total_ms,
+                timings=result["timings"],
+            )
             logger.info(
                 "request_id=%s outcome=success route=%s total_ms=%.2f queue_ms=%.2f",
                 request.state.request_id,
@@ -201,22 +220,35 @@ def create_app(
                 request_id=request.state.request_id,
             )
         except (QueueFullError, QueueWaitTimeoutError) as exc:
-            await metrics.record("http_429")
+            await metrics.record(
+                "http_429",
+                duration_ms=round((perf_counter() - started) * 1000, 2),
+            )
             raise AppError(429, "generation_busy", f"{exc}，请稍后重试") from exc
         except LLMTimeoutError as exc:
-            await metrics.record("http_504")
+            await metrics.record(
+                "http_504",
+                duration_ms=round((perf_counter() - started) * 1000, 2),
+            )
             raise AppError(504, exc.code, str(exc)) from exc
         except TimeoutError as exc:
-            await metrics.record("http_504")
+            await metrics.record(
+                "http_504",
+                duration_ms=round((perf_counter() - started) * 1000, 2),
+            )
             raise AppError(504, "request_timeout", "回答生成超时，请稍后重试") from exc
         except LLMServiceError as exc:
             await metrics.record(
                 "errors",
+                duration_ms=round((perf_counter() - started) * 1000, 2),
                 upstream_rate_limited=exc.rate_limited,
             )
             raise AppError(503, exc.code, str(exc)) from exc
         except Exception as exc:
-            await metrics.record("errors")
+            await metrics.record(
+                "errors",
+                duration_ms=round((perf_counter() - started) * 1000, 2),
+            )
             logger.exception("request_id=%s unhandled ask error", request.state.request_id)
             raise AppError(500, "internal_error", "服务器处理失败，请联系管理员") from exc
 
@@ -269,12 +301,24 @@ def _validate_question(payload: QuestionRequest) -> None:
     if not question:
         raise AppError(422, "empty_question", "问题不能为空")
     if len(question) > config.MAX_QUESTION_CHARS:
-        raise AppError(413, "question_too_long", "问题长度不能超过 2000 字符")
+        raise AppError(
+            413,
+            "question_too_long",
+            f"问题长度不能超过 {config.MAX_QUESTION_CHARS} 字符",
+        )
     if len(payload.history) > config.MAX_HISTORY_ITEMS:
-        raise AppError(413, "history_too_long", "历史消息不能超过 10 条")
+        raise AppError(
+            413,
+            "history_too_long",
+            f"历史消息不能超过 {config.MAX_HISTORY_ITEMS} 条",
+        )
     history_chars = sum(len(item.content) for item in payload.history)
     if history_chars > config.MAX_HISTORY_CHARS:
-        raise AppError(413, "history_too_large", "历史消息总长度不能超过 20000 字符")
+        raise AppError(
+            413,
+            "history_too_large",
+            f"历史消息总长度不能超过 {config.MAX_HISTORY_CHARS} 字符",
+        )
 
 
 def _error_response(

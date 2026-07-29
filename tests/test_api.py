@@ -15,7 +15,11 @@ class FakeRetriever:
             "textbook_sources": 18,
             "vector_documents": 0,
             "knowledge_mode": "local_and_pubmed",
-            "retrievers": {"bm25": "ready", "pubmed": "ready", "chroma": "empty"},
+            "retrievers": {
+                "bm25": "ready",
+                "pubmed": "ready",
+                "chroma": "disabled_security_hold",
+            },
         }
 
 
@@ -86,6 +90,22 @@ def test_health_and_auth_boundaries(monkeypatch):
 
         client.post("/api/auth/logout")
         assert client.get("/api/auth/status").json() == {"authenticated": False}
+
+
+def test_login_failures_are_rate_limited_and_success_resets(monkeypatch):
+    monkeypatch.setattr(config, "LOGIN_MAX_ATTEMPTS", 2)
+    monkeypatch.setattr(config, "LOGIN_WINDOW_SECONDS", 60)
+    with make_client(monkeypatch) as client:
+        assert client.post("/api/auth/login", json={"password": "wrong-1"}).status_code == 401
+        assert client.post("/api/auth/login", json={"password": "test-password"}).status_code == 200
+        client.post("/api/auth/logout")
+
+        assert client.post("/api/auth/login", json={"password": "wrong-2"}).status_code == 401
+        assert client.post("/api/auth/login", json={"password": "wrong-3"}).status_code == 401
+
+        blocked = client.post("/api/auth/login", json={"password": "test-password"})
+        assert blocked.status_code == 429
+        assert blocked.json()["error"]["code"] == "login_rate_limited"
 
 
 def test_stats_report_real_corpus_dimensions(monkeypatch):

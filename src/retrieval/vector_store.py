@@ -2,9 +2,13 @@
 ChromaDB 向量存储模块
 """
 
-import chromadb
 from typing import List, Dict, Optional
 from ..config import config
+
+try:
+    import chromadb
+except ImportError:  # Chroma is intentionally excluded from the default install.
+    chromadb = None
 
 
 class ChromaVectorStore:
@@ -12,6 +16,11 @@ class ChromaVectorStore:
 
     def __init__(self):
         """初始化 ChromaDB 客户端"""
+        if chromadb is None:
+            raise RuntimeError(
+                "Chroma is disabled in the default build pending a security fix "
+                "for CVE-2026-45829"
+            )
         # 初始化 ChromaDB 客户端（持久化存储）
         self.client = chromadb.PersistentClient(
             path=config.CHROMA_PERSIST_DIR
